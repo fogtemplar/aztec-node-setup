@@ -1,31 +1,85 @@
-# 1) 새 프로젝트 디렉토리로 이동
-mkdir aztec-node-setup && cd aztec-node-setup
+#!/usr/bin/env bash
+set -euo pipefail
 
-# 2) 기존 setup-aztec-node.sh 복사 또는 새로 만들기
-cp /path/to/your/setup-aztec-node.sh .
+# ====================================================
+# Aztec alpha-testnet 풀 노드 자동 설치 & 가동 스크립트
+# Version: v0.85.0-alpha-testnet.5
+# Ubuntu/Debian 전용, sudo 권한 필요
+# ====================================================
 
-# 3) 실행 권한 설정
-chmod +x setup-aztec-node.sh
+if [ "$(id -u)" -ne 0 ]; then
+  echo "⚠️  이 스크립트는 root(또는 sudo) 권한으로 실행해야 합니다."
+  exit 1
+fi
 
-# 4) README, .gitignore, LICENSE 작성 (선택)
-cat > README.md <<EOF
-# Aztec 풀 노드 자동 설치 스크립트
+echo "🐋 Docker & Docker Compose 설치..."
+apt-get update
+apt-get install -y apt-transport-https ca-certificates curl gnupg-agent software-properties-common
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io
+curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+  -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
 
-v0.85.0-alpha-testnet.5 기준으로 Ubuntu/Debian에 Aztec Sequencer Node를  
-한 번에 설치·가동하는 Bash 스크립트입니다.
+echo "🟢 Node.js & npm 설치..."
+curl -fsSL https://deb.nodesource.com/setup_16.x | bash -
+apt-get install -y nodejs
 
-## 사용법
-\`\`\`bash
-git clone https://github.com/YourUsername/aztec-node-setup.git
-cd aztec-node-setup
-chmod +x setup-aztec-node.sh
-sudo ./setup-aztec-node.sh
-\`\`\`
+echo "⚙️ Aztec CLI 설치 및 alpha-testnet 준비..."
+npm install -g @aztecprotocol/aztec-cli
+aztec-up alpha-testnet
+
+read -p "▶️ L1 실행 클라이언트(EL) RPC URL: " ETH_RPC
+read -p "▶️ L1 컨센서스(CL) RPC URL: " CONS_RPC
+read -p "▶️ Blob Sink URL (선택): " BLOB_URL
+
+echo "🌐 공인 IP 조회 중..."
+PUBLIC_IP=$(curl -s ifconfig.me || echo "127.0.0.1")
+echo "    → $PUBLIC_IP"
+
+# .env 파일 생성
+cat > .env <<EOF
+ETHEREUM_HOSTS="$ETH_RPC"
+L1_CONSENSUS_HOST_URLS="$CONS_RPC"
+P2P_IP="$PUBLIC_IP"
+EOF
+if [ -n "$BLOB_URL" ]; then
+  echo "BLOB_SINK_URL=\"$BLOB_URL\"" >> .env
+fi
+
+# docker-compose.yml 생성
+BLOB_FLAG=""
+if [ -n "$BLOB_URL" ]; then
+  BLOB_FLAG="--sequencer.blobSinkUrl \$BLOB_SINK_URL"
+fi
+
+cat > docker-compose.yml <<EOF
+version: "3.8"
+services:
+  node:
+    image: aztecprotocol/aztec:0.85.0-alpha-testnet.5
+    network_mode: host
+    env_file:
+      - .env
+    entrypoint: >
+      sh -c 'node --no-warnings /usr/src/yarn-project/aztec/dest/bin/index.js \
+        start --network alpha-testnet --node --archiver \
+        --l1-rpc-urls \$ETHEREUM_HOSTS \
+        --l1-consensus-host-urls \$L1_CONSENSUS_HOST_URLS \
+        --p2p.p2pIp \$P2P_IP $BLOB_FLAG'
+    volumes:
+      - \${PWD}/data:/data
+    ports:
+      - 40400:40400/tcp
+      - 40400:40400/udp
+      - 8080:8080
 EOF
 
-echo "node_modules/" > .gitignore
+mkdir -p data
 
-# 5) Git 초기화, 커밋
-git init
-git add .
-git commit -m "Initial commit: Aztec node setup script"
+echo "🚀 Aztec 풀 노드 시작..."
+docker-compose up -d
+
+echo -e "\n✅ 완료! 로그: docker-compose logs -f"
