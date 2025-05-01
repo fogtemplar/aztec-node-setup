@@ -32,8 +32,8 @@ curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compo
   -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 
-# 3) Node.js & npm 설치
-echo "🟢 Node.js & npm 설치..."
+# 3) Node.js 설치
+echo "🟢 Node.js 설치..."
 curl -fsSL https://deb.nodesource.com/setup_16.x | bash -
 apt-get install -y nodejs
 
@@ -41,14 +41,17 @@ apt-get install -y nodejs
 echo "⚙️ Aztec CLI 설치 및 alpha-testnet 준비..."
 curl -sL https://install.aztec.network | bash
 
+# 설치된 바이너리 경로를 PATH에 추가
+export PATH="$HOME/.aztec/bin:$PATH"
+
 # 설치 확인
-if ! command -v aztec &> /dev/null; then
+if ! command -v aztec-up &> /dev/null; then
   echo "❌ Aztec CLI 설치에 실패했습니다."
   exit 1
 fi
 
-# 최신 alpha-testnet 바이너리 가져오기
-aztec up alpha-testnet
+# alpha-testnet용 바이너리 다운로드
+aztec-up alpha-testnet
 
 # 5) 사용자 입력
 read -p "▶️ L1 실행 클라이언트(EL) RPC URL: " ETH_RPC
