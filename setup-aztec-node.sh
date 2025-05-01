@@ -40,7 +40,15 @@ apt-get install -y nodejs
 # 4) Aztec CLI 설치 및 alpha-testnet 준비
 echo "⚙️ Aztec CLI 설치 및 alpha-testnet 준비..."
 curl -sL https://install.aztec.network | bash
-aztec-up alpha-testnet
+
+# 설치 확인
+if ! command -v aztec &> /dev/null; then
+  echo "❌ Aztec CLI 설치에 실패했습니다."
+  exit 1
+fi
+
+# 최신 alpha-testnet 바이너리 가져오기
+aztec up alpha-testnet
 
 # 5) 사용자 입력
 read -p "▶️ L1 실행 클라이언트(EL) RPC URL: " ETH_RPC
