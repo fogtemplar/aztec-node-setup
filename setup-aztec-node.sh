@@ -7,49 +7,63 @@ set -euo pipefail
 # Ubuntu/Debian 전용, sudo 권한 필요
 # ====================================================
 
+# 1) 루트 권한 확인
 if [ "$(id -u)" -ne 0 ]; then
   echo "⚠️  이 스크립트는 root(또는 sudo) 권한으로 실행해야 합니다."
   exit 1
 fi
 
+# 2) Docker & Docker Compose 설치
 echo "🐋 Docker & Docker Compose 설치..."
 apt-get update
-apt-get install -y apt-transport-https ca-certificates curl gnupg-agent software-properties-common
+apt-get install -y \
+  apt-transport-https \
+  ca-certificates \
+  curl \
+  gnupg-agent \
+  software-properties-common
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
-add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+add-apt-repository \
+  "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable"
 apt-get update
 apt-get install -y docker-ce docker-ce-cli containerd.io
 curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
   -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 
+# 3) Node.js & npm 설치
 echo "🟢 Node.js & npm 설치..."
 curl -fsSL https://deb.nodesource.com/setup_16.x | bash -
 apt-get install -y nodejs
 
+# 4) Aztec CLI 설치 및 alpha-testnet 준비
 echo "⚙️ Aztec CLI 설치 및 alpha-testnet 준비..."
-npm install -g @aztecprotocol/aztec-cli
+curl -sL https://install.aztec.network | bash
 aztec-up alpha-testnet
 
+# 5) 사용자 입력
 read -p "▶️ L1 실행 클라이언트(EL) RPC URL: " ETH_RPC
 read -p "▶️ L1 컨센서스(CL) RPC URL: " CONS_RPC
-read -p "▶️ Blob Sink URL (선택): " BLOB_URL
+read -p "▶️ Blob Sink URL (없으면 Enter): " BLOB_URL
 
+# 6) 공인 IP 자동 조회
 echo "🌐 공인 IP 조회 중..."
 PUBLIC_IP=$(curl -s ifconfig.me || echo "127.0.0.1")
 echo "    → $PUBLIC_IP"
 
-# .env 파일 생성
+# 7) .env 파일 생성
 cat > .env <<EOF
 ETHEREUM_HOSTS="$ETH_RPC"
 L1_CONSENSUS_HOST_URLS="$CONS_RPC"
 P2P_IP="$PUBLIC_IP"
 EOF
+
 if [ -n "$BLOB_URL" ]; then
   echo "BLOB_SINK_URL=\"$BLOB_URL\"" >> .env
 fi
 
-# docker-compose.yml 생성
+# 8) docker-compose.yml 생성
 BLOB_FLAG=""
 if [ -n "$BLOB_URL" ]; then
   BLOB_FLAG="--sequencer.blobSinkUrl \$BLOB_SINK_URL"
@@ -77,9 +91,13 @@ services:
       - 8080:8080
 EOF
 
+# 9) 데이터 디렉터리 준비
 mkdir -p data
 
-echo "🚀 Aztec 풀 노드 시작..."
+# 10) 서비스 시작
+echo "🚀 Aztec 풀 노드 시작 (docker-compose up -d)..."
 docker-compose up -d
 
-echo -e "\n✅ 완료! 로그: docker-compose logs -f"
+echo -e "\n✅ 설치 및 가동 완료!"
+echo "   - 로그 확인: docker-compose logs -f"
+echo "   - 데이터 디렉터리: $(pwd)/data"
